@@ -37,7 +37,7 @@ app.use((req, res, next) => {
  * Health/config probe. Reports whether a token is configured so the UI can
  * show a setup hint instead of a wall of 500s — but never reveals the token.
  */
-app.get('/api/health', (_req, res) => {
+app.get(['/api/health', '/health'], (_req, res) => {
   res.json({ success: true, data: { status: 'ok', auth: authStatus() }, message: 'OK' });
 });
 
@@ -46,7 +46,20 @@ app.get('/api/health', (_req, res) => {
  * prefixes rather than all of /api, so an unknown path still answers 404
  * instead of blaming the config.
  */
-const DATA_PREFIXES = ['/api/scheme', '/api/nav', '/api/amc_factsheet', '/api/amc_portfolio_disclosure'];
+/**
+ * Mounted under both the prefixed and bare forms. On Vercel the /api rewrite
+ * may or may not preserve the prefix by the time Express sees the URL, and
+ * accepting both removes that as a failure mode. Locally only the /api form
+ * is ever used.
+ */
+const MOUNTS = {
+  scheme: ['/api/scheme', '/scheme'],
+  nav: ['/api/nav', '/nav'],
+  factsheet: ['/api/amc_factsheet', '/amc_factsheet'],
+  disclosure: ['/api/amc_portfolio_disclosure', '/amc_portfolio_disclosure'],
+};
+
+const DATA_PREFIXES = Object.values(MOUNTS).flat();
 
 app.use(DATA_PREFIXES, (_req, res, next) => {
   if (isConfigured()) return next();
@@ -58,15 +71,22 @@ app.use(DATA_PREFIXES, (_req, res, next) => {
   });
 });
 
-app.use('/api/scheme', schemeRoutes);
-app.use('/api/nav', navRoutes);
-app.use('/api/amc_factsheet', factsheetRoutes);
-app.use('/api/amc_portfolio_disclosure', disclosureRoutes);
+app.use(MOUNTS.scheme, schemeRoutes);
+app.use(MOUNTS.nav, navRoutes);
+app.use(MOUNTS.factsheet, factsheetRoutes);
+app.use(MOUNTS.disclosure, disclosureRoutes);
 
 // Unknown /api paths are a routing mistake, not a config problem — answer
 // before the token guard so a typo doesn't masquerade as a missing token.
-app.use('/api', (_req, res) => {
-  res.status(404).json({ success: false, message: 'No such proxy route', code: 'NOT_FOUND' });
+// Echoes the path Express actually saw, which is the fastest way to diagnose
+// a platform rewrite that rewrote more than expected.
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'No such proxy route',
+    code: 'NOT_FOUND',
+    path: req.originalUrl,
+  });
 });
 
 // --- Error envelope -------------------------------------------------------
