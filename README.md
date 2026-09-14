@@ -179,9 +179,13 @@ muted teal for positive, muted rose for negative — no pure red/green.
 ledger/
 ├── .env.example
 ├── scripts/probe.mjs           API smoke test
+├── vercel.json                 build config + SPA fallback
+├── api/
+│   └── [...slug].js            Vercel entry — hands /api/* to the Express app
 ├── server/                     Express proxy — the only thing with the token
 │   └── src/
-│       ├── index.js            app wiring + error envelope
+│       ├── app.js              the app (no listener) — shared by both entries
+│       ├── index.js            local dev listener
 │       ├── token.js            token source (static or login), refresh-on-401
 │       ├── upstream.js         fetch + auth header + status mapping
 │       └── routes/             scheme · nav · factsheet · disclosure
@@ -191,6 +195,53 @@ ledger/
         ├── components/         ui primitives · NavChart · tabs/
         └── pages/              Explorer · FundDetail
 ```
+
+---
+
+## Deploying to Vercel
+
+Frontend and backend ship as **one project** so they share an origin. That is
+what keeps CORS out of the picture: the browser calls `/api/...` on the same
+domain it loaded the page from, exactly as it does behind the Vite dev proxy.
+Deploying them as two projects would reintroduce the cross-origin problem the
+proxy exists to solve.
+
+How it fits together:
+
+| Piece | Role |
+| --- | --- |
+| `vercel.json` | Build command, static output dir, SPA fallback rewrite |
+| `api/[...slug].js` | Catch-all that hands every `/api/*` request to the Express app |
+| `server/src/app.js` | The app itself, with no server attached |
+| `server/src/index.js` | Local dev only — imports the app and listens on 8787 |
+
+Vercel's routing resolves the filesystem before rewrites, so `/assets/*` serves
+static files, `/api/*` reaches the function, and everything else falls through
+to `index.html` for client-side routing.
+
+### Project settings
+
+- **Root Directory:** the repository root (not `server/`). The build needs the
+  workspace root to install both packages.
+- **Framework Preset:** Other. `vercel.json` already supplies the build command
+  and output directory.
+- **Environment Variables:** add `PARTNER_ACCESS_TOKEN`, then **redeploy** —
+  environment changes do not apply to an existing deployment.
+
+Prefer `PARTNER_ACCESS_TOKEN` over `PARTNER_IDENTIFIER`/`PARTNER_PASSWORD` on
+Vercel. Login mode caches the token in module memory, which suits a long-lived
+process but not serverless: every cold start would re-login, and concurrent
+invocations would race.
+
+### Checking a deployment
+
+```bash
+curl -s https://<your-app>.vercel.app/api/health
+```
+
+`auth.configured: false` means the environment variable is missing or the
+deployment predates it. `auth.configured: true` with data flowing through
+`/api/scheme?limit=1` means the whole chain is live.
 
 ---
 

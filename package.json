@@ -2,8 +2,12 @@
   "name": "ledger",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Mutual fund research POC — Express proxy + React frontend over the MF Data API",
-  "workspaces": ["server", "web"],
+  "workspaces": [
+    "server",
+    "web"
+  ],
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm --workspace server run dev",
@@ -14,5 +18,7 @@
   "devDependencies": {
     "concurrently": "^9.1.2"
   },
-  "engines": { "node": ">=20.6" }
+  "engines": {
+    "node": ">=20.6"
+  }
 }
